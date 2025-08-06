@@ -1,13 +1,14 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { z } from 'zod';
 
 // Zod schemas
 const TicketPrioritySchema = z.enum(['high', 'medium', 'low']);
 const TicketSourceSchema = z.enum(['web', 'email', 'phone', 'chat']);
 const TicketImageSchema = z.object({
-  url: z.string(),
+  data: z.string(),
   filename: z.string(),
 });
 
@@ -53,7 +54,34 @@ export default function Home() {
   const [submitStatus, setSubmitStatus] = useState<{
     type: 'success' | 'error' | null;
     message: string;
+    ticketData?: {
+      id: string;
+      createdAt: string;
+      status: string;
+      priority: string;
+      title: string;
+      reference?: string;
+      estimatedTime?: string;
+      assignedTo?: string;
+      isProvisionalCompany?: boolean;
+    };
   }>({ type: null, message: '' });
+  
+  // Efecto para controlar el scroll del body cuando el modal está abierto
+  useEffect(() => {
+    if (submitStatus.type === 'success' && submitStatus.ticketData) {
+      // Deshabilitar scroll cuando el modal está abierto
+      document.body.style.overflow = 'hidden';
+    } else {
+      // Restaurar scroll cuando el modal se cierra
+      document.body.style.overflow = 'auto';
+    }
+    
+    // Limpiar el efecto cuando el componente se desmonta
+    return () => {
+      document.body.style.overflow = 'auto';
+    };
+  }, [submitStatus.type]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -100,7 +128,7 @@ export default function Home() {
 
       // Add the new images to the form data
       const newImages = files.map((file, index) => ({
-        url: base64Results[index],
+        data: base64Results[index],
         filename: file.name
       }));
 
@@ -132,7 +160,7 @@ export default function Home() {
       });
 
       // Make the API call with base64 images
-      const response = await fetch('https://jadmin-nu.vercel.app/api/public-tickets', {
+      const response = await fetch('https://jadmin-mu.vercel.app/api/public-tickets', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -140,7 +168,7 @@ export default function Home() {
         body: JSON.stringify({
           ...validatedData,
           images: validatedData.images?.map(img => ({
-            url: img.url,
+            data: img.data,
             filename: img.filename
           }))
         }),
@@ -151,10 +179,40 @@ export default function Home() {
         throw new Error(errorData.message || 'Error al crear el ticket');
       }
 
+      // Parse the response data
+      const responseData = await response.json();
+      
+      // Generate a reference number if not provided
+      const referenceNumber = responseData.reference || `REF-${Math.floor(100000 + Math.random() * 900000)}`;
+      
+      // Estimate response time based on priority
+      const estimatedTime = responseData.estimatedTime || (
+        formData.priority === 'high' ? '2-4 horas' :
+        formData.priority === 'medium' ? '24 horas' : 
+        '48 horas'
+      );
+      
+      // Get ticket ID from the correct field in the response
+      const ticketId = responseData.ticket_id || responseData.id || `TKT-${Math.floor(100000 + Math.random() * 900000)}`;
+      
+      // Check if company is provisional
+      const statusMessage = responseData.using_provisional_company ? 'pendiente de revisión' : 'pendiente';
+      
       // Success
       setSubmitStatus({
         type: 'success',
-        message: '¡Ticket creado exitosamente! Nos pondremos en contacto pronto.'
+        message: responseData.message || '¡Ticket creado exitosamente! Nos pondremos en contacto pronto.',
+        ticketData: {
+          id: ticketId,
+          createdAt: responseData.createdAt || new Date().toISOString(),
+          status: responseData.status || statusMessage,
+          priority: responseData.priority || formData.priority || 'medium',
+          title: responseData.title || formData.title || '',
+          reference: referenceNumber,
+          estimatedTime: estimatedTime,
+          assignedTo: responseData.assignedTo || 'Equipo de Soporte',
+          isProvisionalCompany: responseData.using_provisional_company || false
+        }
       });
 
       // Reset form
@@ -248,6 +306,32 @@ export default function Home() {
       service_tag_names: [randomItem(serviceTags)],
       source: 'web',
       images: [],
+      serviceTagInput: ''
+    });
+  };
+  
+  // Function to load the provided JSON example
+  const loadJsonExample = () => {
+    const jsonExample = {
+      "title": "Test Printer Issue",
+      "description": "The office printer is showing error code E503",
+      "company_name": "ACME Corp",
+      "service_tag_names": ["printer", "hardware"],
+      "contact_name": "John Smith",
+      "contact_email": "john.smith@acme.com",
+      "contact_phone": "555-0123",
+      "priority": "medium" as "high" | "medium" | "low",
+      "source": "web" as "web" | "email" | "phone" | "chat",
+      "images": [
+        {
+          "filename": "test.png",
+          "data": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+        }
+      ]
+    };
+    
+    setFormData({
+      ...jsonExample,
       serviceTagInput: ''
     });
   };
@@ -377,40 +461,225 @@ export default function Home() {
           {/* Form Section */}
           <div className="lg:col-span-2">
             {process.env.NODE_ENV === 'development' && (
-              <button
-                type="button"
-                onClick={generateRandomData}
-                className="mb-6 px-4 py-2 bg-gray-800 text-white rounded-md hover:bg-gray-700 transition-colors flex items-center gap-2"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-                Generar datos de prueba
-              </button>
+              <div className="flex gap-4 mb-6">
+                <button
+                  type="button"
+                  onClick={generateRandomData}
+                  className="px-4 py-2 bg-gray-800 text-white rounded-md hover:bg-gray-700 transition-colors flex items-center gap-2"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  Generar datos de prueba
+                </button>
+              </div>
             )}
 
-            {submitStatus.type && (
-              <div
-                className={`mb-6 p-4 rounded-lg ${
-                  submitStatus.type === 'success' 
-                    ? 'bg-green-50 text-green-800' 
-                    : 'bg-red-50 text-red-800'
-                }`}
-              >
+            {submitStatus.type === 'error' && (
+              <div className="mb-6 p-4 rounded-lg bg-red-50 text-red-800">
                 <div className="flex items-center">
-                  {submitStatus.type === 'success' ? (
-                    <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                    </svg>
-                  ) : (
-                    <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                    </svg>
-                  )}
+                  <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                  </svg>
                   <p>{submitStatus.message}</p>
                 </div>
               </div>
             )}
+            
+            {/* Success Modal with AnimatePresence */}
+            <AnimatePresence>
+              {submitStatus.type === 'success' && submitStatus.ticketData && (
+                <motion.div 
+                  className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden" 
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  {/* Background overlay with click to close */}
+                  <motion.div 
+                    className="fixed inset-0 bg-black bg-opacity-20 backdrop-blur-sm transition-opacity" 
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 0.70 }}
+                    exit={{ opacity: 0 }}
+                    onClick={() => setSubmitStatus({ type: null, message: '' })}
+                  />
+                  
+                  {/* Modal panel */}
+                  <motion.div 
+                    className="relative bg-white dark:bg-slate-700 rounded-xl overflow-hidden shadow-2xl max-w-lg w-full mx-4"
+                    initial={{ scale: 0.9, y: 20 }}
+                    animate={{ scale: 1, y: 0 }}
+                    exit={{ scale: 0.9, y: 20 }}
+                    transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+                  >
+                    {/* Success banner */}
+                    <div className="bg-slate-200 dark:bg-slate-500 h-2 w-full" />
+                    
+                    {/* Close button */}
+                    <button 
+                      className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+                      onClick={() => setSubmitStatus({ type: null, message: '' })}
+                    >
+                      <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                    
+                    <div className="p-6">
+                      {/* Header with success icon */}
+                      <div className="flex items-center mb-6">
+                        <div className="bg-slate-100 dark:bg-slate-600/30 rounded-full p-2 mr-4">
+                          <svg className="w-6 h-6 text-slate-500 dark:text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                          </svg>
+                        </div>
+                        <div>
+                          <h3 className="text-lg font-semibold text-gray-800 dark:text-slate-100">¡Ticket creado con éxito!</h3>
+                          <p className="text-sm text-gray-600 dark:text-slate-300">Tu solicitud ha sido registrada correctamente.</p>
+                        </div>
+                      </div>
+                      
+                      {/* Ticket information card */}
+                      <div className="bg-slate-50 dark:bg-slate-800/30 rounded-lg p-5 border border-slate-200 dark:border-slate-700 mb-6">
+                        {/* Ticket ID - Highlighted section */}
+                        <div className="bg-slate-50 dark:bg-slate-800/20 border border-slate-200 dark:border-slate-700/50 rounded-lg p-4 mb-5">
+                          <div className="flex justify-center items-center">
+                            <div className="text-center">
+                              <p className="text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-wider">ID del Ticket</p>
+                              <p className="text-2xl font-bold text-slate-700 dark:text-slate-200">{submitStatus.ticketData.id}</p>
+                              {submitStatus.ticketData.isProvisionalCompany && (
+                                <p className="text-xs text-amber-500 mt-1">pendiente de revisión</p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        
+                        {/* Status and Priority */}
+                        <div className="flex justify-between mb-4">
+                          <div>
+                            <p className="text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-1">Estado</p>
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-700 dark:bg-amber-700/20 dark:text-amber-300">
+                              {submitStatus.ticketData.status}
+                            </span>
+                          </div>
+                          <div>
+                            <p className="text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-1">Prioridad</p>
+                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                              submitStatus.ticketData.priority === 'high' ? 'bg-rose-50 text-rose-700 dark:bg-rose-700/20 dark:text-rose-300' :
+                              submitStatus.ticketData.priority === 'medium' ? 'bg-amber-50 text-amber-700 dark:bg-amber-700/20 dark:text-amber-300' :
+                              'bg-emerald-50 text-emerald-700 dark:bg-emerald-700/20 dark:text-emerald-300'
+                            }`}>
+                              {submitStatus.ticketData.priority === 'high' ? 'Alta' :
+                               submitStatus.ticketData.priority === 'medium' ? 'Media' : 'Baja'}
+                            </span>
+                          </div>
+                        </div>
+                        
+                        {/* Title */}
+                        <div className="mb-4">
+                          <p className="text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-1">Título</p>
+                          <p className="text-base font-medium text-gray-800 dark:text-slate-200">{submitStatus.ticketData.title}</p>
+                        </div>
+                        
+                        {/* Creation date and estimated response time */}
+                        <div className="grid grid-cols-2 gap-4 mb-4">
+                          <div>
+                            <p className="text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-1">Fecha de creación</p>
+                            <p className="text-sm text-gray-700 dark:text-slate-300">
+                              {new Date(submitStatus.ticketData.createdAt).toLocaleString('es-ES', {
+                                year: 'numeric',
+                                month: 'long',
+                                day: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-1">Tiempo estimado</p>
+                            <p className="text-sm text-gray-700 dark:text-slate-300">{submitStatus.ticketData.estimatedTime}</p>
+                          </div>
+                        </div>
+                        
+                        {/* Assigned to */}
+                        <div>
+                          <p className="text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-1">Asignado a</p>
+                          <div className="flex items-center">
+                            <div className="bg-slate-100 dark:bg-slate-600/30 rounded-full w-6 h-6 flex items-center justify-center mr-2">
+                              <span className="text-xs font-medium text-slate-600 dark:text-slate-300">{submitStatus.ticketData.assignedTo?.charAt(0) || 'S'}</span>
+                            </div>
+                            <p className="text-sm text-gray-700 dark:text-slate-300">{submitStatus.ticketData.assignedTo || 'Equipo de Soporte'}</p>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {/* Next steps section */}
+                      <div className="bg-slate-50 dark:bg-slate-700/30 rounded-lg p-4 mb-6">
+                        <h4 className="text-sm font-medium text-gray-800 dark:text-slate-100 mb-2">Próximos pasos:</h4>
+                        <ul className="space-y-2 text-sm text-gray-600 dark:text-slate-300">
+                          <li className="flex items-start">
+                            <svg className="w-4 h-4 text-slate-500 dark:text-slate-400 mr-2 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                            </svg>
+                            Recibirás un correo de confirmación con los detalles de tu ticket.
+                          </li>
+                          <li className="flex items-start">
+                            <svg className="w-4 h-4 text-slate-500 dark:text-slate-400 mr-2 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                            </svg>
+                            Un especialista revisará tu caso en breve.
+                          </li>
+                          <li className="flex items-start">
+                            <svg className="w-4 h-4 text-slate-500 dark:text-slate-400 mr-2 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                            </svg>
+                            Guarda el ID de tu ticket para futuras consultas.
+                          </li>
+                        </ul>
+                      </div>
+                      
+                      {/* Action buttons */}
+                      <div className="flex justify-between">
+                        <button
+                          onClick={() => setSubmitStatus({ type: null, message: '' })}
+                          className="flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-gray-700 bg-slate-100 hover:bg-slate-200 dark:text-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 transition-colors"
+                        >
+                          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                          Cerrar
+                        </button>
+                        <button
+                          onClick={() => {
+                            setSubmitStatus({ type: null, message: '' });
+                            setFormData({
+                              contact_name: '',
+                              company_name: '',
+                              contact_email: '',
+                              contact_phone: '',
+                              priority: 'medium',
+                              title: '',
+                              description: '',
+                              service_tag_names: [],
+                              source: 'web',
+                              images: [],
+                              serviceTagInput: ''
+                            });
+                          }}
+                          className="flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-slate-500 hover:bg-slate-600 dark:bg-slate-500 dark:hover:bg-slate-600 transition-colors"
+                        >
+                          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                          </svg>
+                          Crear nuevo ticket
+                        </button>
+                      </div>
+                    </div>
+                  </motion.div>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             <form onSubmit={handleSubmit} className="bg-white rounded-lg shadow-sm p-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
@@ -622,7 +891,7 @@ export default function Home() {
                               </p>
                               <ul className="list-disc list-inside text-sm text-gray-500">
                                 {formData.images.map(img => (
-                                  <li key={img.url} className="flex items-center justify-center gap-2">
+                                  <li key={img.data} className="flex items-center justify-center gap-2">
                                     <span className="truncate max-w-xs">{img.filename}</span>
                                     <button
                                       type="button"
@@ -630,7 +899,7 @@ export default function Home() {
                                         e.preventDefault();
                                         setFormData(prev => ({
                                           ...prev,
-                                          images: prev.images?.filter(i => i.url !== img.url) || []
+                                          images: prev.images?.filter(i => i.data !== img.data) || []
                                         }));
                                       }}
                                       className="text-red-500 hover:text-red-700"
