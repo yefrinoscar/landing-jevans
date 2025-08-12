@@ -51,6 +51,9 @@ export default function Home() {
 
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSubmitted, setIsSubmitted] = useState(false);
   const [submitStatus, setSubmitStatus] = useState<{
     type: 'success' | 'error' | null;
     message: string;
@@ -72,6 +75,8 @@ export default function Home() {
     if (submitStatus.type === 'success' && submitStatus.ticketData) {
       // Deshabilitar scroll cuando el modal está abierto
       document.body.style.overflow = 'hidden';
+      setIsSubmitted(true);
+      setShowModal(true);
     } else {
       // Restaurar scroll cuando el modal se cierra
       document.body.style.overflow = 'auto';
@@ -262,6 +267,17 @@ export default function Home() {
     }
   };
 
+  const addServiceTag = () => {
+    const tag = formData.serviceTagInput?.trim();
+    if (tag && !formData.service_tag_names?.includes(tag)) {
+      setFormData(prev => ({
+        ...prev,
+        service_tag_names: [...(prev.service_tag_names || []), tag],
+        serviceTagInput: ''
+      }));
+    }
+  };
+
   const removeServiceTag = (tagToRemove: string) => {
     setFormData(prev => ({
       ...prev,
@@ -392,134 +408,7 @@ export default function Home() {
             )}
 
             {/* Success State */}
-            {isSubmitted && (
-              <div className="p-8">
-                {/* Success Header */}
-                <div className="text-center mb-8">
-                  <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-green-100 mb-4">
-                    <svg className="h-8 w-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                  </div>
-                  <h3 className="text-2xl font-bold text-gray-900 mb-2">
-                    ¡Ticket enviado exitosamente!
-                  </h3>
-                  <p className="text-gray-600">
-                    Su ticket de soporte ha sido procesado. Nos pondremos en contacto con usted pronto.
-                  </p>
-                </div>
-
-                {/* Ticket Details */}
-                <div className="bg-gray-50 rounded-lg p-6 mb-6">
-                  <h4 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-                    <svg className="w-5 h-5 text-blue-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                    Detalles del ticket enviado
-                  </h4>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <p className="text-sm text-gray-500">Nombre completo</p>
-                      <p className="font-medium text-gray-900">{formData.fullName}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-500">Empresa</p>
-                      <p className="font-medium text-gray-900">{formData.companyName}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-500">Email</p>
-                      <p className="font-medium text-gray-900">{formData.email}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-500">Prioridad</p>
-                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                        formData.priority === 'Alta' ? 'bg-red-100 text-red-800' :
-                        formData.priority === 'Media' ? 'bg-yellow-100 text-yellow-800' :
-                        'bg-green-100 text-green-800'
-                      }`}>
-                        {formData.priority}
-                      </span>
-                    </div>
-                  </div>
-
-                  {serviceTags.length > 0 && (
-                    <div className="mt-4">
-                      <p className="text-sm text-gray-500 mb-2">Service Tags</p>
-                      <div className="flex flex-wrap gap-2">
-                        {serviceTags.map((tag) => (
-                          <span
-                            key={tag}
-                            className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-blue-100 text-blue-800"
-                          >
-                            {tag}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="mt-4">
-                    <p className="text-sm text-gray-500 mb-2">Descripción del problema</p>
-                    <p className="text-gray-900 bg-white p-3 rounded border">
-                      {formData.problemDescription}
-                    </p>
-                  </div>
-
-                  {formData.attachments && (
-                    <div className="mt-4">
-                      <p className="text-sm text-gray-500 mb-2">Archivo adjunto</p>
-                      <div className="bg-white p-3 rounded border">
-                        <div className="flex items-center mb-2">
-                          <svg className="w-5 h-5 text-gray-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-                          </svg>
-                          <span className="text-gray-900">{formData.attachments.name}</span>
-                        </div>
-                        
-                        {/* Image Preview */}
-                        {formData.attachments.type.startsWith('image/') && (
-                          <div className="mt-3">
-                            <p className="text-sm text-gray-500 mb-2">Vista previa de la imagen:</p>
-                            <div className="relative">
-                              <img
-                                src={URL.createObjectURL(formData.attachments)}
-                                alt="Preview"
-                                className="max-w-full h-auto max-h-48 rounded border object-contain"
-                                onLoad={(e) => {
-                                  // Clean up the object URL when image loads
-                                  const target = e.target as HTMLImageElement;
-                                  setTimeout(() => URL.revokeObjectURL(target.src), 1000);
-                                }}
-                              />
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Action Buttons */}
-                <div className="flex flex-col sm:flex-row gap-3">
-                  <button
-                    onClick={createNewTicket}
-                    className="flex-1 bg-blue-600 text-white py-3 px-6 rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                    </svg>
-                    Crear nuevo ticket
-                  </button>
-                  <button
-                    onClick={closeModal}
-                    className="flex-1 bg-gray-200 text-gray-800 py-3 px-6 rounded-lg font-medium hover:bg-gray-300 transition-colors"
-                  >
-                    Cerrar
-                  </button>
-                </div>
-              </div>
-            )}
+            
           </div>
         </div>
       )}
@@ -677,7 +566,10 @@ export default function Home() {
                     {/* Close button */}
                     <button 
                       className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
-                      onClick={() => setSubmitStatus({ type: null, message: '' })}
+                      onClick={() => {
+                        setSubmitStatus({ type: null, message: '' });
+                        setShowModal(false);
+                      }}
                     >
                       <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
@@ -800,7 +692,10 @@ export default function Home() {
                       {/* Action buttons */}
                       <div className="flex justify-between">
                         <button
-                          onClick={() => setSubmitStatus({ type: null, message: '' })}
+                          onClick={() => {
+                            setSubmitStatus({ type: null, message: '' });
+                            setShowModal(false);
+                          }}
                           className="flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-gray-700 bg-slate-100 hover:bg-slate-200 dark:text-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 transition-colors"
                         >
                           <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -811,6 +706,7 @@ export default function Home() {
                         <button
                           onClick={() => {
                             setSubmitStatus({ type: null, message: '' });
+                            setShowModal(false);
                             setFormData({
                               contact_name: '',
                               company_name: '',
