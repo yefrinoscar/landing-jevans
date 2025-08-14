@@ -48,6 +48,12 @@ export default function Home() {
     images: [],
     serviceTagInput: ''
   });
+  
+  // Estado para la vista previa de imagen a tamaño completo
+  const [imagePreview, setImagePreview] = useState<{
+    isOpen: boolean;
+    currentIndex: number;
+  }>({ isOpen: false, currentIndex: 0 });
 
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -72,7 +78,7 @@ export default function Home() {
   
   // Efecto para controlar el scroll del body cuando el modal está abierto
   useEffect(() => {
-    if (submitStatus.type === 'success' && submitStatus.ticketData) {
+    if ((submitStatus.type === 'success' && submitStatus.ticketData) || imagePreview.isOpen) {
       // Deshabilitar scroll cuando el modal está abierto
       document.body.style.overflow = 'hidden';
       setIsSubmitted(true);
@@ -86,14 +92,43 @@ export default function Home() {
     return () => {
       document.body.style.overflow = 'auto';
     };
-  }, [submitStatus.type]);
+  }, [submitStatus.type, imagePreview.isOpen]);
+
+  // Función para formatear número de teléfono
+  const formatPhoneNumber = (value: string): string => {
+    // Eliminar todos los caracteres que no sean números
+    const cleaned = value.replace(/[^0-9]/g, '');
+    
+    // Limitar a 9 dígitos
+    const limited = cleaned.slice(0, 9);
+    
+    // Aplicar formato según la longitud (formato: 123 456 789)
+    const parts = [];
+    
+    if (limited.length > 0) parts.push(limited.slice(0, 3));
+    if (limited.length > 3) parts.push(limited.slice(3, 6));
+    if (limited.length > 6) parts.push(limited.slice(6, 9));
+    
+    return parts.join(' ');
+  };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
+    
+    // Manejo especial para el campo de teléfono
+    if (name === 'contact_phone') {
+      const formattedPhone = formatPhoneNumber(value);
+      setFormData(prev => ({
+        ...prev,
+        [name]: formattedPhone
+      }));
+    } else {
+      setFormData(prev => ({
+        ...prev,
+        [name]: value
+      }));
+    }
+    
     // Clear error when field is modified
     if (formErrors[name]) {
       setFormErrors(prev => {
@@ -127,12 +162,23 @@ export default function Home() {
     setSubmitStatus({ type: null, message: '' });
 
     try {
+      // Filtrar solo imágenes
+      const imageFiles = files.filter(file => file.type.startsWith('image/'));
+      
+      if (imageFiles.length === 0) {
+        setSubmitStatus({
+          type: 'error',
+          message: 'Por favor, selecciona solo archivos de imagen (JPG, PNG, GIF)'
+        });
+        return;
+      }
+      
       // Convert all files to base64
-      const base64Promises = files.map(file => convertToBase64(file));
+      const base64Promises = imageFiles.map(file => convertToBase64(file));
       const base64Results = await Promise.all(base64Promises);
 
       // Add the new images to the form data
-      const newImages = files.map((file, index) => ({
+      const newImages = imageFiles.map((file, index) => ({
         data: base64Results[index],
         filename: file.name
       }));
@@ -141,6 +187,9 @@ export default function Home() {
         ...prev,
         images: [...(prev.images || []), ...newImages]
       }));
+      
+      // Limpiar el input para permitir subir el mismo archivo nuevamente
+      e.target.value = '';
     } catch (error) {
       setSubmitStatus({
         type: 'error',
@@ -796,6 +845,7 @@ export default function Home() {
                     value={formData.contact_phone || ''}
                     onChange={handleInputChange}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white"
+                    placeholder="123 456 789"
                     required
                   />
                   {formErrors.contact_phone && <p className="text-red-500 text-xs mt-1">{formErrors.contact_phone}</p>}
@@ -916,7 +966,7 @@ export default function Home() {
                     onChange={handleFileChange}
                     className="hidden"
                     id="file-upload"
-                    accept="image/*"
+                    accept="image/*" /* Solo permitir imágenes */
                     multiple
                     disabled={isSubmitting}
                   />
@@ -930,56 +980,141 @@ export default function Home() {
                           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                         </svg>
-                        <p className="text-sm text-gray-500">Subiendo archivos...</p>
+                        <p className="text-sm text-gray-500">Subiendo imágenes...</p>
                       </div>
                     ) : (
                       <>
-                        <svg className="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
-                          <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
-                        </svg>
-                        <div className="mt-4">
-                          {formData.images && formData.images.length > 0 ? (
-                            <div>
-                              <p className="text-sm font-medium text-gray-900 mb-1">
-                                {formData.images.length} {formData.images.length === 1 ? 'archivo subido' : 'archivos subidos'}
-                              </p>
-                              <ul className="list-disc list-inside text-sm text-gray-500">
-                                {formData.images.map(img => (
-                                  <li key={img.data} className="flex items-center justify-center gap-2">
-                                    <span className="truncate max-w-xs">{img.filename}</span>
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.preventDefault();
-                                        setFormData(prev => ({
-                                          ...prev,
-                                          images: prev.images?.filter(i => i.data !== img.data) || []
-                                        }));
-                                      }}
-                                      className="text-red-500 hover:text-red-700"
-                                    >
-                                      ×
-                                    </button>
-                                  </li>
-                                ))}
-                              </ul>
+                        {formData.images && formData.images.length > 0 ? (
+                          <div>
+                            <p className="text-sm font-medium text-gray-900 mb-3">
+                              {formData.images.length} {formData.images.length === 1 ? 'imagen subida' : 'imágenes subidas'}
+                            </p>
+                            
+                            {/* Vista previa de imágenes */}
+                            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3 mb-4">
+                              {formData.images.map((img, index) => (
+                                <div key={index} className="relative group">
+                                  <div 
+                                    className="aspect-square rounded-lg overflow-hidden border border-gray-200 cursor-pointer"
+                                    onClick={() => setImagePreview({ isOpen: true, currentIndex: index })}
+                                  >
+                                    <img 
+                                      src={img.data} 
+                                      alt={img.filename}
+                                      className="h-full w-full object-cover"
+                                    />
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      setFormData(prev => ({
+                                        ...prev,
+                                        images: prev.images?.filter((_, i) => i !== index) || []
+                                      }));
+                                    }}
+                                    className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600 transition-all shadow-md"
+                                  >
+                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
+                                  </button>
+                                  <p className="text-xs text-gray-500 mt-1 text-center truncate">{img.filename}</p>
+                                </div>
+                              ))}
                             </div>
-                          ) : (
-                            <>
+                            
+                            {/* Botón para agregar más imágenes */}
+                            <button 
+                              type="button" 
+                              onClick={() => document.getElementById('file-upload')?.click()}
+                              className="mt-2 inline-flex items-center px-3 py-1.5 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                            >
+                              <svg className="-ml-1 mr-2 h-4 w-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                              </svg>
+                              Agregar más imágenes
+                            </button>
+                          </div>
+                        ) : (
+                          <>
+                            <svg className="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
+                              <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                            <div className="mt-4">
                               <p className="text-gray-600">
-                                Arrastra archivos aquí o haz clic para seleccionar
+                                Arrastra imágenes aquí o haz clic para seleccionar
                               </p>
                               <p className="text-sm text-gray-500 mt-1">
-                                Solo imágenes (PNG, JPG)
+                                Solo imágenes (PNG, JPG, GIF)
                               </p>
-                            </>
-                          )}
-                        </div>
+                            </div>
+                          </>
+                        )}
                       </>
                     )}
                   </label>
                 </div>
               </div>
+              
+              {/* Modal de vista previa a tamaño completo */}
+              {imagePreview.isOpen && formData.images && formData.images.length > 0 && (
+                <div 
+                  className="fixed inset-0 bg-black bg-opacity-90 z-50 flex items-center justify-center p-4"
+                  onClick={() => setImagePreview({ isOpen: false, currentIndex: 0 })}
+                >
+                  <div 
+                    className="relative max-w-3xl w-full flex flex-col items-center"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {/* Botón de cerrar */}
+                    <button
+                      type="button"
+                      onClick={() => setImagePreview({ isOpen: false, currentIndex: 0 })}
+                      className="absolute -top-3 -right-3 bg-white text-gray-800 rounded-full p-1.5 hover:bg-gray-200 transition-all shadow-lg z-10"
+                      aria-label="Cerrar"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                    
+                    {/* Contenedor de la imagen */}
+                    <div className="bg-transparent w-full flex items-center justify-center">
+                      <img
+                        src={formData.images[imagePreview.currentIndex].data}
+                        alt={formData.images[imagePreview.currentIndex].filename}
+                        className="max-h-[70vh] max-w-full object-contain"
+                      />
+                    </div>
+                    
+                    {/* Miniaturas y navegación */}
+                    {formData.images.length > 1 && (
+                      <div className="mt-4 flex flex-wrap justify-center gap-2">
+                        {formData.images.map((img, idx) => (
+                          <div 
+                            key={idx} 
+                            className={`w-16 h-16 rounded-md overflow-hidden border-2 cursor-pointer transition-all ${imagePreview.currentIndex === idx ? 'border-white' : 'border-transparent opacity-70 hover:opacity-100'}`}
+                            onClick={() => setImagePreview(prev => ({ ...prev, currentIndex: idx }))}
+                          >
+                            <img 
+                              src={img.data} 
+                              alt={img.filename}
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    
+                    {/* Nombre del archivo */}
+                    <p className="text-white text-sm mt-2 text-center max-w-full truncate px-4">
+                      {formData.images[imagePreview.currentIndex].filename}
+                    </p>
+                  </div>
+                </div>
+              )}
 
               {/* Submit Button */}
               <button
